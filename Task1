@@ -1,0 +1,103 @@
+Step 1: Data Collection 
+# Import necessary libraries
+import pandas as pd
+
+# Load a sample dataset
+data = pd.read_csv('https://raw.githubusercontent.com/dD2405/Twitter_Sentiment_Analysis/master/train.csv')
+
+# Display the first few rows of the dataset
+print(data.head())
+
+Step 2: Text Preprocessing
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+
+# Download stopwords
+nltk.download('stopwords')
+nltk.download('punkt')
+
+def preprocess_text(text):
+    # Remove special characters and digits
+    text = re.sub(r'\W', ' ', str(text))
+    text = re.sub(r'\s+[a-zA-Z]\s+', ' ', text)
+    text = re.sub(r'\^[a-zA-Z]\s+', ' ', text)
+    text = re.sub(r'\s+', ' ', text, flags=re.I)
+    text = re.sub(r'^b\s+', '', text)
+    
+    # Convert to lowercase
+    text = text.lower()
+    
+    # Tokenize
+    tokens = word_tokenize(text)
+    
+    # Remove stopwords
+    tokens = [word for word in tokens if word not in stopwords.words('english')]
+    
+    return ' '.join(tokens)
+
+# Apply the preprocess_text function to the dataset
+data['preprocessed_text'] = data['tweet'].apply(preprocess_text)
+print(data.head())
+
+Step 3: Feature Extraction
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+# Initialize TF-IDF Vectorizer
+tfidf_vectorizer = TfidfVectorizer(max_features=5000)
+
+# Fit and transform the preprocessed text
+X = tfidf_vectorizer.fit_transform(data['preprocessed_text']).toarray()
+
+# The target variable
+y = data['label']
+
+Step 4: Model Selection
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+
+# Split the dataset into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Initialize the model
+model = LogisticRegression()
+
+# Train the model
+model.fit(X_train, y_train)
+
+Step 5: Model Evaluation
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+# Make predictions on the test set
+y_pred = model.predict(X_test)
+
+# Calculate evaluation metrics
+accuracy = accuracy_score(y_test, y_pred)
+precision = precision_score(y_test, y_pred, average='weighted')
+recall = recall_score(y_test, y_pred, average='weighted')
+f1 = f1_score(y_test, y_pred, average='weighted')
+
+print(f'Accuracy: {accuracy}')
+print(f'Precision: {precision}')
+print(f'Recall: {recall}')
+print(f'F1 Score: {f1}')
+
+
+Step 6: Deployment
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    data = request.json
+    text = data['text']
+    preprocessed_text = preprocess_text(text)
+    text_features = tfidf_vectorizer.transform([preprocessed_text]).toarray()
+    prediction = model.predict(text_features)
+    
+    return jsonify({'prediction': int(prediction[0])})
+
+if __name__ == '__main__':
+    app.run(debug=True)
