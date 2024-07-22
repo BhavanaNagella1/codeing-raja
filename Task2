@@ -1,0 +1,132 @@
+Step 1: Data Collection
+First, let's assume you have a dataset of food images categorized into various classes. If you don't have a dataset, you can use a pre-existing one like the Food-101 dataset.
+
+Step 2: Data Preprocessing
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+import os
+
+# Set the paths to your dataset directories
+train_dir = 'path_to_train_dataset'
+test_dir = 'path_to_test_dataset'
+
+# Image data generator with data augmentation for the training set
+train_datagen = ImageDataGenerator(
+    rescale=1.0/255.0,
+    rotation_range=40,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    fill_mode='nearest'
+)
+
+# Image data generator for the testing set
+test_datagen = ImageDataGenerator(rescale=1.0/255.0)
+
+# Load the training set
+train_generator = train_datagen.flow_from_directory(
+    train_dir,
+    target_size=(150, 150),
+    batch_size=32,
+    class_mode='categorical'
+)
+
+# Load the testing set
+validation_generator = test_datagen.flow_from_directory(
+    test_dir,
+    target_size=(150, 150),
+    batch_size=32,
+    class_mode='categorical'
+)
+
+
+Step 3: Model Architecture
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout
+
+# Load the MobileNetV2 model
+base_model = MobileNetV2(input_shape=(150, 150, 3), include_top=False, weights='imagenet')
+
+# Freeze the base model layers
+base_model.trainable = False
+
+# Create the model
+model = Sequential([
+    base_model,
+    GlobalAveragePooling2D(),
+    Dropout(0.2),
+    Dense(128, activation='relu'),
+    Dense(train_generator.num_classes, activation='softmax')
+])
+
+# Compile the model
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+
+Step 4: Model Training
+# Train the model
+history = model.fit(
+    train_generator,
+    steps_per_epoch=train_generator.samples // train_generator.batch_size,
+    validation_data=validation_generator,
+    validation_steps=validation_generator.samples // validation_generator.batch_size,
+    epochs=10
+)
+
+
+Step 5: Model Evaluation
+# Evaluate the model
+loss, accuracy = model.evaluate(validation_generator)
+print(f'Test Accuracy: {accuracy}')
+
+
+Step 6: Visualization
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Get a batch of images and labels
+test_images, test_labels = next(validation_generator)
+
+# Get model predictions
+predictions = model.predict(test_images)
+predicted_classes = np.argmax(predictions, axis=1)
+true_classes = np.argmax(test_labels, axis=1)
+
+# Plot some test images with their predicted and true labels
+plt.figure(figsize=(10, 10))
+for i in range(9):
+    plt.subplot(3, 3, i + 1)
+    plt.imshow(test_images[i])
+    plt.title(f"Pred: {predicted_classes[i]}, True: {true_classes[i]}")
+    plt.axis('off')
+plt.show()
+
+
+Step 7: Deployment
+from flask import Flask, request, jsonify
+from tensorflow.keras.preprocessing.image import load_img, img_to_array
+
+app = Flask(__name__)
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    file = request.files['file']
+    img_path = 'path_to_save_image'
+    file.save(img_path)
+    
+    # Preprocess the image
+    img = load_img(img_path, target_size=(150, 150))
+    img_array = img_to_array(img)
+    img_array = np.expand_dims(img_array, axis=0) / 255.0
+    
+    # Make prediction
+    prediction = model.predict(img_array)
+    predicted_class = np.argmax(prediction, axis=1)
+    
+    return jsonify({'prediction': int(predicted_class[0])})
+
+if __name__ == '__main__':
+    app.run(debug=True)
